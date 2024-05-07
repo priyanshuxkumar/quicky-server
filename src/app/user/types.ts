@@ -25,6 +25,8 @@ export const types = `#graphql
         email: String!
         avatar: String
 
+        chats: [Chat]
+
     }
 
     type Chat {

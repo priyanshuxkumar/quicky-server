@@ -3,6 +3,8 @@ import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
 import JWTService from "../../services/jwt";
 
+import { User } from "@prisma/client";
+
 
 export interface createUserPayload {
   firstname: string;
@@ -27,10 +29,26 @@ const queries = {
       const id = ctx.user?.id
       if(!id) return null
       
-      const user = await prismaClient.user.findUnique({where: {id}})
+      // const user = await prismaClient.user.findUnique({where: {id} , include: {chats: true}})
+
+      const user = await prismaClient.user.findUnique({
+        where: {
+            id: id
+        },
+        include: {
+            chats: {
+                include: {
+                    users: true, 
+                },
+            },
+        },
+    });
+
       if(!user){
         throw new Error("User not found")
       }
+
+
       return user;
     }
 }
@@ -117,9 +135,8 @@ const mutations = {
   
         if (existingChat) {
             return existingChat;
-        }
-
-        // Create a new chat and connect the current user and recipient
+        };
+        
         const newChat = await prismaClient.chat.create({
           data: {
               users: {
