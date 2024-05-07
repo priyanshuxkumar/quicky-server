@@ -22,8 +22,11 @@ export async function initServer() {
         }
     `,
     resolvers: {
+      Query: {
+        ...User.resolvers.queries,
+      },
       Mutation: {
-          ...User.resolvers.mutations,
+        ...User.resolvers.mutations,
       },
     },
   });

@@ -3,6 +3,7 @@ import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
 import JWTService from "../../services/jwt";
 
+
 export interface createUserPayload {
   firstname: string;
   lastname?: string;
@@ -14,6 +15,24 @@ export interface createUserPayload {
 export interface loginUserPayload {
   identifier: string;
   password: string
+}
+
+export interface createChatPayload {
+  recieverId: string
+}
+
+
+const queries = {
+    getCurrentUser: async(parent: any , args: any , ctx: GraphqlContext) => {
+      const id = ctx.user?.id
+      if(!id) return null
+      
+      const user = await prismaClient.user.findUnique({where: {id}})
+      if(!user){
+        throw new Error("User not found")
+      }
+      return user;
+    }
 }
 
 const mutations = {
@@ -72,7 +91,52 @@ const mutations = {
 
         const token = JWTService.generateTokenForUser(user)
         return {user , token};
+    },
+    createChat: async(parent: any,{ payload }: { payload: createChatPayload },ctx: GraphqlContext) => {
+        if (!ctx.user?.id) {
+          throw new Error("Unauthorized! Please login to create a chat.");
+        };
+        
+        const {recieverId} = payload
+
+        if(!recieverId) {
+          throw new Error("Failed to fetch Chat")
+        }
+
+        const existingChat = await prismaClient.chat.findFirst({
+          where: {
+              AND: [
+                  { users: { some: { id: ctx.user.id } } },
+                  { users: { some: { id: recieverId } } }
+              ],
+          },
+          include: {
+            users: true
+          }
+        });
+  
+        if (existingChat) {
+            return existingChat;
+        }
+
+        // Create a new chat and connect the current user and recipient
+        const newChat = await prismaClient.chat.create({
+          data: {
+              users: {
+                  connect: [
+                      { id: ctx.user.id },
+                      { id: recieverId },
+                  ],
+              },
+          },
+          include: {
+              users: true,
+          },
+        });
+
+        return newChat;
+
     }
 };
 
-export const resolvers = { mutations };
+export const resolvers = { mutations , queries };
