@@ -26,13 +26,11 @@ export const types = `#graphql
         avatar: String
 
         chats: [Chat]
-
     }
 
     type Chat {
         id: ID!
         users: [User]
-        messages: [Message]
     }
 
     type AuthPayload {
@@ -40,11 +38,17 @@ export const types = `#graphql
         token: String!
     }
 
+    input CreateMessageInput {
+        chatId:      String!
+        recipientId: String!
+        content:     String!
+    }
+
     type Message {
         id: ID!
-        content:     String
-        senderId:    String
-        recipientId: String
-        chatId:      String
+        recipientId: String!
+        chatId:      String!
+        content:     String!
+        senderId:    String!
     }
 `;

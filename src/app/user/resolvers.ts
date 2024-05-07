@@ -3,8 +3,6 @@ import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
 import JWTService from "../../services/jwt";
 
-import { User } from "@prisma/client";
-
 
 export interface createUserPayload {
   firstname: string;
@@ -23,6 +21,12 @@ export interface createChatPayload {
   recieverId: string
 }
 
+export interface createMessagePayload {
+  chatId: string
+  recipientId: string
+  content: string
+  senderId: string
+}
 
 const queries = {
     getCurrentUser: async(parent: any , args: any , ctx: GraphqlContext) => {
@@ -42,15 +46,34 @@ const queries = {
                 },
             },
         },
-    });
+      });
 
       if(!user){
         throw new Error("User not found")
       }
-
-
       return user;
-    }
+    },
+
+    fetchAllMessages: async(parent: any,{ chatId }: { chatId: string},ctx: GraphqlContext) => {
+      const id = ctx.user?.id
+      if(!id) return null
+
+      try {
+        const messages = await prismaClient.message.findMany({
+            where: {
+                chatId,
+            },
+            orderBy: {
+                createdAt: 'asc',
+            },
+        });
+        return messages;
+
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+        throw new Error('Failed to fetch messages');
+      }
+    },
 }
 
 const mutations = {
@@ -136,7 +159,7 @@ const mutations = {
         if (existingChat) {
             return existingChat;
         };
-        
+
         const newChat = await prismaClient.chat.create({
           data: {
               users: {
@@ -153,7 +176,30 @@ const mutations = {
 
         return newChat;
 
-    }
+    },
+    createMessage: async(parent: any,{ payload }: { payload: createMessagePayload },ctx: GraphqlContext)=>{
+
+      if (!ctx.user?.id) {
+          throw new Error("Unauthorized! Please login to create a chat.");
+      };
+
+      const { recipientId, content, chatId } = payload;
+
+      if(!recipientId || !content?.length || !chatId) {
+          throw new Error("Unable to send message")
+      };
+
+      const message = await prismaClient.message.create({
+          data: {
+              chatId,
+              content,
+              senderId: ctx.user.id,
+              recipientId,
+          }
+      })
+
+      return message;
+  }
 };
 
 export const resolvers = { mutations , queries };
