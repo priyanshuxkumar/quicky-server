@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs"; // For hashing passwords
 import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
+import JWTService from "../../services/jwt";
 
 export interface createUserPayload {
   firstname: string;
@@ -8,6 +9,11 @@ export interface createUserPayload {
   email: string;
   password: string;
   username: string;
+}
+
+export interface loginUserPayload {
+  identifier: string;
+  password: string
 }
 
 const mutations = {
@@ -37,6 +43,36 @@ const mutations = {
 
       return newUser;
     },
+    loginUser: async(parent: any,
+      { payload }: { payload: loginUserPayload },
+      ctx: GraphqlContext) =>{
+        const {identifier , password} = payload;
+
+        if(!identifier || !password){
+          throw new Error("Field must be required!")
+        };
+
+        const user = await prismaClient.user.findFirst({
+          where: {
+            OR: [
+              { email: identifier },
+              { username: identifier },
+            ],
+          },
+        });
+  
+        if(!user){
+          throw new Error("User not found!")
+        }
+
+        const isPasswordValid = await bcrypt.compare(password , user.password)
+        if(!isPasswordValid){
+           throw new Error("Invalid credentials!")
+        }
+
+        const token = JWTService.generateTokenForUser(user)
+        return {user , token};
+    }
 };
 
 export const resolvers = { mutations };

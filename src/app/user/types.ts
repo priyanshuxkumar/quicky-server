@@ -7,6 +7,12 @@ export const types = `#graphql
         username: String! , 
         password: String!
     }
+
+    input UserLoginInput {
+        identifier: String!,
+        password: String!
+    }
+
     type User {
         id: ID!
         firstname: String!
@@ -16,5 +22,10 @@ export const types = `#graphql
         avatar: String
         password: String!
 
+    }
+
+    type AuthPayload {
+        user: User
+        token: String!
     }
 `;
