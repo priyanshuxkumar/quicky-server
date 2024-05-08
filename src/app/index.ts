@@ -6,9 +6,12 @@ import { User } from "./user";
 import { GraphqlContext } from "../interfaces";
 import JWTService from "../services/jwt";
 
+import cors from "cors"
+
 export async function initServer() {
   const app = express();
   app.use(bodyParser.json());
+  app.use(cors())
   
   const graphqlServer = new ApolloServer<GraphqlContext>({
     typeDefs: `
