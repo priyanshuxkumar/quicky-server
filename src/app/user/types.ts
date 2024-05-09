@@ -5,7 +5,7 @@ export const types = `#graphql
         email: String!, 
         avatar: String, 
         username: String! , 
-        password: String!
+        password: String!,
     }
 
     input UserLoginInput {
@@ -25,30 +25,38 @@ export const types = `#graphql
         email: String!
         avatar: String
 
-        chats: [Chat]
+        users: [ChatUser]
     }
 
     type Chat {
         id: ID!
-        users: [User]
+        users: [ChatUser]
+        messages: [Message]
     }
 
     type AuthPayload {
-        user: User
+        user:  User
         token: String!
     }
 
     input CreateMessageInput {
         chatId:      String!
-        recipientId: String!
         content:     String!
+        recipientId:  String
     }
 
     type Message {
-        id: ID!
-        recipientId: String!
-        chatId:      String!
+        id:          ID!
         content:     String!
         senderId:    String!
+        recipientId: String
+        chatId:      String!
+        chat:        Chat
+    }
+
+    type ChatUser {
+        id: ID!
+        user: User
+        chat: Chat
     }
 `;
