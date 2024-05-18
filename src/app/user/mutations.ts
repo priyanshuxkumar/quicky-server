@@ -1,7 +1,8 @@
 export const mutations = `#graphql
     registerUser(payload: UserCreateInput!): User!  
     loginUser(payload: UserLoginInput!): AuthPayload!
-    createChat(payload: ChatCreateInput!): Chat
-    createMessage(payload: CreateMessageInput!): Message!
+    sendMessage(payload: SendMessageInput!): Message
+    sendOTPVerificationEmail(email: String!): verificationEmailResponse!
+    verifyOTP(email: String! , otp:String!): verificationEmailResponse!
 `;
 

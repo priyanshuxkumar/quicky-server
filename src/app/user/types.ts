@@ -13,10 +13,6 @@ export const types = `#graphql
         password: String!
     }
 
-    input ChatCreateInput{
-        recieverId: String!
-    }
-
     type User {
         id: ID!
         firstname: String!
@@ -24,7 +20,7 @@ export const types = `#graphql
         username: String!
         email: String!
         avatar: String
-
+        isActive: Boolean
         users: [ChatUser]
     }
 
@@ -39,10 +35,10 @@ export const types = `#graphql
         token: String!
     }
 
-    input CreateMessageInput {
-        chatId:      String!
+    input SendMessageInput {
+        chatId:      String
         content:     String!
-        recipientId:  String
+        recipientId:  String!
     }
 
     type Message {
@@ -52,11 +48,17 @@ export const types = `#graphql
         recipientId: String
         chatId:      String!
         chat:        Chat
+        createdAt:   String!
     }
 
     type ChatUser {
         id: ID!
         user: User
         chat: Chat
+    }
+
+    type verificationEmailResponse {
+        success: Boolean!
+        message: String!
     }
 `;

@@ -1,4 +1,4 @@
- import {initServer} from "./app/index"
+import {initServer} from "./app/index"
 const PORT = 8000;
 
  async function init(){
