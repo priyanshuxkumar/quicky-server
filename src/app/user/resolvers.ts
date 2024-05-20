@@ -78,7 +78,7 @@ const queries = {
                     }
                 },
                 messages: {
-                  orderBy: { createdAt: 'desc' },
+                  orderBy: { updatedAt: 'desc' },
                   take: 1, 
                 }, 
             }
@@ -118,7 +118,7 @@ const queries = {
           console.error('Error fetching messages:', error);
           throw new Error('Failed to fetch messages');
       }
-  },
+    },
   
 
     getUserByUsername: async(parent: any , {username}: {username: string} , ctx: GraphqlContext) => {
@@ -391,6 +391,12 @@ const mutations = {
           senderId: ctx.user.id,
         },
       });
+
+
+      if (message) {
+        ctx.io.emit('receivedMessage', message); // Emit the message using the Socket.IO instance
+      }
+      
       return message;
     }
     }
