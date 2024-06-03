@@ -5,20 +5,33 @@ import { expressMiddleware } from "@apollo/server/express4";
 import { User } from "./user";
 import { GraphqlContext } from "../interfaces";
 import JWTService from "../services/jwt";
+import { createServer } from "http";
+import cors from "cors";
 
-import {Server as SocketIOServer } from "socket.io"
-import { createServer } from "http"
-import cors from "cors"
+//SocketIO
+import { initSocket, getSocket } from "../services/socket";
 
-
-let io:SocketIOServer;
+//Rate Limiter---
+import {handleIncomingRequests} from "../middlewares/rateLimiter"
 
 export async function initServer() {
   const app = express();
   app.use(bodyParser.json());
   app.use(cors());
 
+  //Using Rate Limiting Middleware
+  app.use((req, res , next) => {
+      const requestId = Date.now();
+      if(handleIncomingRequests(requestId)){
+          next(); 
+          
+      }else{
+          res.status(429).send("Too many requests");
+      }
+  });
+
   const graphqlServer = new ApolloServer<GraphqlContext>({
+    csrfPrevention: false,
     typeDefs: `
         ${User.types}
 
@@ -42,36 +55,9 @@ export async function initServer() {
 
   //Create HTTP server
   const httpServer = createServer(app);
-  io = new SocketIOServer(httpServer, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"],
-    },
-  });
+  const io = initSocket(httpServer);
 
-  //handle socket connections
-  io.on("connection", (socket) => {
-    console.log("user is connected");
-
-      //When user join a Chat
-    socket.on("join chat", (room) => {
-      socket.join(room);
-      console.log("User Joined Room: " + room);
-    });
-
-    socket.on("sendMessage", (message) => {
-      // Broadcast the message to all connected clients
-      io.emit("receivedMessage", message);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("user is disconnected");
-    });
-
-    
-  });
-
-  app.use("/graphql",expressMiddleware(graphqlServer, {
+  app.use("/graphql", expressMiddleware(graphqlServer, {
       context: async ({ req, res }) => {
         return {
           user: req.headers.authorization
@@ -79,7 +65,7 @@ export async function initServer() {
                 req.headers.authorization.split("Bearer ")[1]
               )
             : undefined,
-            io
+          io,
         };
       },
     })
@@ -87,4 +73,3 @@ export async function initServer() {
 
   return httpServer;
 }
- 

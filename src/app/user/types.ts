@@ -57,8 +57,20 @@ export const types = `#graphql
         chat: Chat
     }
 
-    type verificationEmailResponse {
+    type Response {
         success: Boolean!
         message: String!
+    }
+
+    # type verificationEmailResponse {
+    #     success: Boolean!
+    #     message: String!
+    # }
+
+    input UpdateUserProfileDetailsInput {
+        firstname: String
+        lastname: String
+        username: String
+        avatar: String
     }
 `;

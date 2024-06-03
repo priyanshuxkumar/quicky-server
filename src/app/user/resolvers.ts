@@ -2,10 +2,21 @@ import bcrypt from "bcryptjs"; // For hashing passwords
 import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
 import JWTService from "../../services/jwt";
-import nodemailer from 'nodemailer';
-import { graphql } from "graphql";
 import { sendOTPEmail } from "../../services/emailUtils";
+import  redisClient   from "../../services/redisClient"
 
+
+//AWS
+import {S3Client , PutObjectCommand} from "@aws-sdk/client-s3"
+import {getSignedUrl} from "@aws-sdk/s3-request-presigner"
+
+const s3Client = new S3Client({
+  region: "ap-south-1",
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY || "",
+    secretAccessKey: process.env.S3_SECRET_KEY || "",
+  },
+}); 
 
 export interface createUserPayload {
   firstname: string;
@@ -37,11 +48,24 @@ interface Message {
   createdAt: Date;
 }
 
-const otpStorage: {[key: string]: string} = {};
+interface updateUserProfileDetailsPayload {
+  firstname: string;
+  lastname: string;
+  username: string;
+  avatar:string
+}
 
+const otpStorage: {[key: string]: string} = {};
 
 const queries = {
     getCurrentUser: async(parent: any , args: any , ctx: GraphqlContext) => {
+      const cacheKey = `user:${ctx.user?.id}`;
+      const cacheValue = await redisClient.get(cacheKey);
+
+      if (cacheValue) {
+        return JSON.parse(cacheValue);
+      }
+
       const id = ctx.user?.id
       if(!id) return null
       
@@ -53,11 +77,20 @@ const queries = {
 
       if(!user){
         throw new Error("User not found")
-      }
+      };
+
+      await redisClient.set(cacheKey , JSON.stringify(user) , {'EX': 60});
       return user;
     },
 
     fetchAllChats: async(parent: any, args: any, ctx: GraphqlContext) =>{
+      const cacheKey = `chats:${ctx.user?.id}`;
+      const cacheValue = await redisClient.get(cacheKey);
+
+      if (cacheValue) {
+        return JSON.parse(cacheValue);
+      };
+
       const id = ctx.user?.id
       if(!id) return null
 
@@ -83,6 +116,9 @@ const queries = {
                 }, 
             }
         });
+
+        await redisClient.set(cacheKey, JSON.stringify(chats), {'EX': 15});
+
         return chats
 
     } catch (error) {
@@ -91,15 +127,21 @@ const queries = {
     }
     },
 
-    fetchAllMessages: async (parent: any, { chatId }: { chatId?: string }, ctx: GraphqlContext) => {
+    fetchAllMessages: async (parent: any, { chatId , recipientId}: { chatId: string , recipientId: string }, ctx: GraphqlContext) => {
+      const cacheKey = `messages:${chatId}`;
+      const cacheValue = await redisClient.get(cacheKey);
+
+      if(cacheValue){
+        return JSON.parse(cacheValue)
+      };
+
       const id = ctx.user?.id;
       if (!id) return null;
   
       try {
           let messages : Message[] = [];
-  
-          if (chatId) {
-              // If chatId is provided, fetch messages for that specific chat
+
+          if (chatId && recipientId) {
               messages = await prismaClient.message.findMany({
                   where: {
                       chatId,
@@ -108,10 +150,23 @@ const queries = {
                       createdAt: 'asc',
                   },
               });
-          } else {
-              // If chatId is not provided, return an empty array
-              messages = [];
-          }
+          } else if(recipientId) {
+              messages = await prismaClient.message.findMany({
+                where: {
+                    OR: [
+                        { senderId: id, recipientId: recipientId },
+                        { senderId: recipientId, recipientId: id },
+                    ]
+                  },
+                  orderBy: {
+                      createdAt: 'asc',
+                  }
+            })
+          }else {
+            messages = [];
+          };
+
+          await redisClient.set(cacheKey , JSON.stringify(messages) , {'EX' : 60})
   
           return messages ;
       } catch (error) {
@@ -120,44 +175,69 @@ const queries = {
       }
     },
   
-
     getUserByUsername: async(parent: any , {username}: {username: string} , ctx: GraphqlContext) => {
-      const user = await prismaClient.user.findMany({
-          take: 5,
-          where: {
-            OR: [
-              { username: { contains: username, mode: 'insensitive' } },
-              { firstname: { contains: username, mode: 'insensitive' } },
-              { lastname: { contains: username, mode: 'insensitive' } }
-            ]
-          },
-          include: {
-            users: {
-                include: {
-                    user: true,
-                    chat: true
-                },
+      const cacheKey = `userProfile:${username}`;
+      const cacheValue =  await redisClient.get(cacheKey);
+
+      if(cacheValue){
+        return JSON.parse(cacheValue)
+      };
+      try {
+        const user = await prismaClient.user.findMany({
+            take: 5,
+            where: {
+              OR: [
+                { username: { contains: username, mode: 'insensitive' } },
+                { firstname: { contains: username, mode: 'insensitive' } },
+                { lastname: { contains: username, mode: 'insensitive' } }
+              ]
             },
-        }
-      });
-      return user;
+            include: {
+              users: {
+                  include: {
+                      user: true,
+                      chat: true
+                  },
+              },
+            }
+        });    
+        await redisClient.set(cacheKey, JSON.stringify(user) , {'EX' : 60})
+        return user; 
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        throw new Error("Failed to fetch user data");
+      }
     },
 
     checkUsernameIsValid: async(parent: any , {username}: {username: string} , ctx: GraphqlContext) => {
+      if(!username) {
+        throw new Error("Username is required")
+      };
+
+
+      const cacheKey = `isUsernameUnique:${username}`
+      const cacheValue = await redisClient.get(cacheKey);
+
+      if(cacheValue !== null ){
+         return JSON.parse(cacheValue)
+      };
+
         try {
+
           const user = await prismaClient.user.findUnique({
               where: {
                   username: username
               }
-          })
-          if(!user) {
-            return true
-          }else{
-            return false
-          }
+          });
+          const isUnique = !user
+          
+          await redisClient.set(cacheKey, JSON.stringify(isUnique), {'EX': 60});
+
+          return isUnique;
+          
         } catch (error) {
           console.error('Error fetching user information:', error);
-          return null;
+          throw new Error("Failed to check username validity.");
         }
       
     },
@@ -179,9 +259,50 @@ const queries = {
           return null;
         }
       
-    }
+    },
 
-}
+    getSignedUrlOfChat: async(parent: any , {imageName , imageType}:{imageName:string , imageType:string} , ctx:GraphqlContext)=> {
+      if(!ctx.user && !ctx.user.id) {
+        throw new Error("User not authenticated")
+      }
+
+      const allowesImageType = ['jpg , jpeg , png'] 
+
+      if(!allowesImageType) throw new Error("Invalid image type")
+
+      const putObjectCommand = new PutObjectCommand(
+        {
+          Bucket: process.env.S3_BUCKET_NAME || "",
+          Key: `upload/chat/${ctx.user.id}/${imageName}-${Date.now()}`,
+        }
+      );
+
+      const signedUrl = await getSignedUrl(s3Client , putObjectCommand)
+      return signedUrl;
+      
+    },
+    getSignedUrlOfAvatar: async(parent: any, {imageName, imageType}: {imageName: string , imageType: string}, ctx: GraphqlContext) => {
+        if(!ctx.user && !ctx.user.id){
+            throw new Error("User not authenticated")
+        };
+
+        const allowesImageType = ['jpg , jpeg , png']
+
+        if(!allowesImageType) throw new Error("Invalid image type")
+
+        const putObjectCommand = new PutObjectCommand(
+          {
+            Bucket: process.env.S3_BUCKET_NAME || "",
+            Key: `upload/avatar/${ctx.user.id}/${imageName}-${Date.now()}`,
+          }
+        );
+
+        const signedUrl = await getSignedUrl(s3Client, putObjectCommand)
+        return signedUrl;
+
+    },
+
+};
 
 const mutations = {
   registerUser: async (parent: any, { payload }: { payload: createUserPayload },ctx: GraphqlContext) => {
@@ -392,14 +513,16 @@ const mutations = {
         },
       });
 
+      console.log('Before:', message);
 
       if (message) {
-        ctx.io.emit('receivedMessage', message); // Emit the message using the Socket.IO instance
+        ctx.io.emit('receivedMessage', message);
       }
       
       return message;
     }
     }
+
   },
 
   // deleteMessages: async(parent:any , {chatId}: {chatId :string} , ctx: GraphqlContext) => {
@@ -438,7 +561,67 @@ const mutations = {
   //     throw new Error('Failed to delete message');
   //   }
 
-  // } 
+  // },
+  
+  updateUserProfileDetails: async (parent: any , {payload} : {payload: updateUserProfileDetailsPayload}, ctx: GraphqlContext) => {
+    if(!ctx.user?.id){
+      throw new Error("Unauthorized! Please login to update details");
+    }
+
+    const {firstname, lastname, username, avatar} = payload;
+
+    if(!firstname && !lastname && !username && !avatar) {
+      throw new Error("Missing required fields");
+    }
+
+    const updatedUser = await prismaClient.user.update({
+      where: { id: ctx.user.id },
+      data: { firstname, lastname, username, avatar },
+    });
+
+    if(!updatedUser){
+      throw new Error("User not found");
+    }
+    return updatedUser;
+  },
+
+  changePassword: async(parent:any, {oldPassword, newPassword , confirmPassword}: {oldPassword:string, newPassword:string , confirmPassword:string} , ctx: GraphqlContext) => {
+    if(!ctx.user?.id){
+      throw new Error("Unauthorized! Please login to change password");
+    }
+    console.log(ctx.user.password)
+
+    if(newPassword != confirmPassword) {
+      throw new Error("New password and confirm password do not match");
+    }
+
+    const user = await prismaClient.user.findFirst({
+      where: { id: ctx.user.id },
+    });
+
+    if(!user){
+      throw new Error("User not found");
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user?.password);
+    
+    if(!isPasswordValid) {
+      throw new Error("Old password is incorrect");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword,10)
+
+    await prismaClient.user.update({
+      where: { id: ctx.user.id },
+      data: { password: hashedPassword},
+    })
+
+    return {
+      success: true,
+      message: "Password changed successfully"
+    }
+  }
+
 };
 
 export const resolvers = { mutations , queries };
