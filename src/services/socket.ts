@@ -14,6 +14,10 @@ export function initSocket(server: any) {
   io.on("connection", (socket) => {
     console.log("Connected to socket.io", socket.id);
 
+    socket.on('setup' , (userId) => {
+      console.log("User is Connected:" ,userId);
+    })
+
    //User join a Chat
     socket.on("join chat", (room) => {
         socket.join(room);
@@ -26,12 +30,12 @@ export function initSocket(server: any) {
     });
 
     // User Typing Indicator functionality starts here
-    socket.on("typing", (data) => {
-    socket.broadcast.emit("typing", data)
+    socket.on("typing", () => {
+      socket.broadcast.emit("typing")
     })
 
     socket.on('stop typing', () => {
-    socket.broadcast.emit('stop typing');
+      socket.broadcast.emit('stop typing');
     });
     // User Typing functionality ends here
 

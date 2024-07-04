@@ -6,5 +6,8 @@ export const mutations = `#graphql
     verifyOTP(email: String! , otp:String!): Response!
     updateUserProfileDetails(payload: UpdateUserProfileDetailsInput): User!
     changePassword(oldPassword: String!, newPassword: String!, confirmPassword:String!): Response!
+    updateMsgSeenStatus(chatId:String!):Response!
+    createStory(mediaUrl:String): Response!
+    deleteStory(storyId:String): Response!
 `;
 

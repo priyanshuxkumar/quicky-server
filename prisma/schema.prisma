@@ -26,6 +26,7 @@ model User {
     updatedAt   DateTime @updatedAt
 
     users       ChatUser[]
+    stories     Story[]
 }
 
 model Chat {
@@ -53,9 +54,26 @@ model Message {
     content     String
     senderId    String
     recipientId String
+    isSeen      Boolean  @default(false)
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
+    storyId     String?
 
     chatId      String
     chat        Chat @relation(fields: [chatId], references: [id])
+    story       Story?   @relation(fields: [storyId], references: [id])
+}
+
+model Story {
+  id          String  @id @default(cuid())
+  userId      String
+
+  user        User @relation(fields: [userId], references: [id])
+  mediaUrl    String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  expiresAt   DateTime
+  message     Message[]
+
 }

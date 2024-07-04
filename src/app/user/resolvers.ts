@@ -37,6 +37,7 @@ export interface createMessagePayload {
   content: string
   senderId: string
   recipientId: string
+  storyId? : string
 }
 
 interface Message {
@@ -54,6 +55,8 @@ interface updateUserProfileDetailsPayload {
   username: string;
   avatar:string
 }
+
+
 
 const otpStorage: {[key: string]: string} = {};
 
@@ -88,7 +91,8 @@ const queries = {
       const cacheValue = await redisClient.get(cacheKey);
 
       if (cacheValue) {
-        return JSON.parse(cacheValue);
+        console.log("cached")
+        // return JSON.parse(cacheValue);
       };
 
       const id = ctx.user?.id
@@ -113,11 +117,12 @@ const queries = {
                 messages: {
                   orderBy: { updatedAt: 'desc' },
                   take: 1, 
-                }, 
+                },
+                
             }
         });
 
-        await redisClient.set(cacheKey, JSON.stringify(chats), {'EX': 15});
+        await redisClient.set(cacheKey, JSON.stringify(chats), {'EX': 5});
 
         return chats
 
@@ -127,12 +132,13 @@ const queries = {
     }
     },
 
-    fetchAllMessages: async (parent: any, { chatId , recipientId}: { chatId: string , recipientId: string }, ctx: GraphqlContext) => {
+    fetchAllMessages: async (parent: any, { chatId , recipientId , limit , offset}: { chatId: string , recipientId: string , limit: number , offset: number}, ctx: GraphqlContext) => {
       const cacheKey = `messages:${chatId}`;
       const cacheValue = await redisClient.get(cacheKey);
 
       if(cacheValue){
-        return JSON.parse(cacheValue)
+        // return JSON.parse(cacheValue)
+        console.log("done cache")
       };
 
       const id = ctx.user?.id;
@@ -147,8 +153,17 @@ const queries = {
                       chatId,
                   },
                   orderBy: {
-                      createdAt: 'asc',
+                      createdAt: 'desc',
                   },
+                  include: {
+                    story: {
+                      select: {
+                        mediaUrl: true
+                      }
+                    }
+                  },
+                  take: limit+1,
+                  skip: offset,
               });
           } else if(recipientId) {
               messages = await prismaClient.message.findMany({
@@ -156,19 +171,23 @@ const queries = {
                     OR: [
                         { senderId: id, recipientId: recipientId },
                         { senderId: recipientId, recipientId: id },
-                    ]
+                    ],
                   },
                   orderBy: {
-                      createdAt: 'asc',
-                  }
+                      createdAt: 'desc',
+                  },
+                  include: {
+                    story: true
+                  },
+                  take: limit+1,
+                  skip: offset,
             })
           }else {
             messages = [];
           };
 
           await redisClient.set(cacheKey , JSON.stringify(messages) , {'EX' : 60})
-  
-          return messages ;
+          return messages;
       } catch (error) {
           console.error('Error fetching messages:', error);
           throw new Error('Failed to fetch messages');
@@ -281,6 +300,7 @@ const queries = {
       return signedUrl;
       
     },
+
     getSignedUrlOfAvatar: async(parent: any, {imageName, imageType}: {imageName: string , imageType: string}, ctx: GraphqlContext) => {
         if(!ctx.user && !ctx.user.id){
             throw new Error("User not authenticated")
@@ -302,6 +322,107 @@ const queries = {
 
     },
 
+    fetchUserStories: async(parent:any , {userId}: {userId:string} , ctx:GraphqlContext) => {
+       if(!ctx?.user.id) {
+          throw new Error("User not authenticated")
+       }
+
+       if(!userId?.length){
+          throw new Error("user not found")
+       }
+
+       const stories = await prismaClient.story.findMany({
+          where : {
+            userId,
+            expiresAt: {
+              gt: new Date()
+            }
+          },
+          include: {
+            user: true
+          }
+       })
+       if(!stories?.length){
+          return []
+       }
+
+       return stories;
+    },
+
+    fetchStoryOfChatUsers: async(parent:any , args:any , ctx:GraphqlContext) => {
+      if(!ctx.user.id){
+        throw new Error("User is not authenticated")
+      };
+
+      const chats = await prismaClient.chat.findMany({
+        where: {
+          users: {
+            some: {
+              userId: ctx.user.id
+            }
+          }
+        },
+        include: {
+          users: true,
+        },
+      });
+
+      // Create a set for unique userIds and a map for userId to chatId
+      const userIdsWithChatId = new Map();
+      chats.forEach(chat => {
+        chat.users.forEach(user => {
+          if (user.userId !== ctx.user.id) {
+            userIdsWithChatId.set(user.userId, chat.id);
+          }
+        });
+      });
+     
+      // Fetch users with active stories using the unique userIds
+      const usersWithActiveStories = await prismaClient.user.findMany({
+        where: {
+          id: { in: Array.from(userIdsWithChatId.keys()) },
+          stories: {
+            some: {
+              expiresAt: {
+                gt: new Date(), // Only active stories
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          username: true,
+          avatar: true,
+        },
+      });
+
+      // Attach chatId to the users
+      const result = usersWithActiveStories.map(user => ({
+        ...user,
+        chatId: userIdsWithChatId.get(user.id),
+      }));
+      return result;
+    },
+
+    getSignedUrlOfStoryMedia: async(parent: any, {mediaName, mediaType}: {mediaName: string, mediaType: string}, ctx: GraphqlContext) => {
+      if(!ctx.user && !ctx.user.id){
+        throw new Error("User not authenticated")
+      };
+
+      const allowesImageType = ['jpg , jpeg , png']
+
+      if(!allowesImageType) throw new Error("Invalid image type")
+
+      const putObjectCommand = new PutObjectCommand(
+        {
+          Bucket: process.env.S3_BUCKET_NAME || "",
+          Key: `upload/stories/${ctx.user.id}/-${Date.now()}-${mediaName}`,
+        }
+      );
+
+      const signedUrl = await getSignedUrl(s3Client, putObjectCommand)
+      return signedUrl;
+    },
 };
 
 const mutations = {
@@ -437,7 +558,7 @@ const mutations = {
       throw new Error("Unauthorized! Please login to create a chat.");
     }
 
-    const { recipientId, content, chatId } = payload;
+    const { recipientId, content, chatId , storyId} = payload;
 
     // Validate required fields
     if (!recipientId) {
@@ -460,6 +581,7 @@ const mutations = {
             content: content,
             recipientId,
             senderId: ctx.user.id,
+            storyId
           },
         });
         return message;
@@ -510,6 +632,7 @@ const mutations = {
           content: content,
           recipientId,
           senderId: ctx.user.id,
+          storyId
         },
       });
 
@@ -620,6 +743,87 @@ const mutations = {
       success: true,
       message: "Password changed successfully"
     }
+  },
+
+  updateMsgSeenStatus:async(parent:any , {chatId} : {chatId:string}, ctx: GraphqlContext) => {
+    if (!ctx.user?.id) {
+      throw new Error("Unauthorized! Please login to update seen status");
+    }
+
+    const chat = await prismaClient.message.updateMany({
+      where: { 
+        chatId: chatId ,
+        isSeen:false
+      },
+      data: {
+        isSeen: true
+      } 
+    });
+
+    if(!chat){
+      throw new Error("Chat not found");
+    };
+    
+    return {
+      success: true,
+      message: "Message seen status changed successfully"
+    }
+  },
+
+  createStory: async (parent:any, {mediaUrl}: {mediaUrl: string}, ctx: GraphqlContext) => {
+    if(!ctx.user?.id){
+      throw new Error("Unauthorized! Please login to create a story.");
+    }
+
+    let expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // stories expire after 24 hours
+
+    await prismaClient.story.create({
+      data: {
+        mediaUrl,
+        userId: ctx.user.id,
+        expiresAt,
+      }
+    });
+    return {
+      success: true,
+      message: "Story uploaded successfully"
+    };
+  },
+
+  deleteStory: async(parent:any, {storyId}: {storyId: string}, ctx: GraphqlContext) => {
+    if(!ctx?.user?.id) {
+      throw new Error("User is not authenticated")
+    }
+
+    if(!storyId) {
+      throw new Error("Story not found or already deleted")
+    };
+
+    const story = await prismaClient.story.findFirst({
+      where: {
+        id: storyId,
+        userId: ctx.user.id
+      }
+    });
+  
+    if (!story) {
+      throw new Error("Story not found or already deleted");
+    }
+
+    if(story.userId != ctx.user.id){
+      throw new Error("You are not authorized to delete this story");
+    }
+  
+    await prismaClient.story.delete({
+      where: {
+        id: storyId
+      }
+    })
+    return {
+      success: true,
+      message: "Story deleted successfully"
+    };
   }
 
 };

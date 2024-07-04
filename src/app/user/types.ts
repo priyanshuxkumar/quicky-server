@@ -21,7 +21,9 @@ export const types = `#graphql
         email: String!
         avatar: String
         isActive: Boolean
-        users: [ChatUser]
+        users:  [ChatUser]
+        stories: [Story]
+        chatId: String
     }
 
     type Chat {
@@ -38,7 +40,8 @@ export const types = `#graphql
     input SendMessageInput {
         chatId:      String
         content:     String!
-        recipientId:  String!
+        recipientId: String!
+        storyId:     String
     }
 
     type Message {
@@ -49,6 +52,9 @@ export const types = `#graphql
         chatId:      String!
         chat:        Chat
         createdAt:   String!
+        isSeen:      Boolean!
+        storyId:     String
+        story:       Story       
     }
 
     type ChatUser {
@@ -62,15 +68,19 @@ export const types = `#graphql
         message: String!
     }
 
-    # type verificationEmailResponse {
-    #     success: Boolean!
-    #     message: String!
-    # }
-
     input UpdateUserProfileDetailsInput {
         firstname: String
         lastname: String
         username: String
         avatar: String
+    }
+
+    type Story {
+        id: ID!  
+        user: User
+        mediaUrl: String!
+        createdAt: String!
+        updatedAt: String!
+        expiresAt: String!
     }
 `;

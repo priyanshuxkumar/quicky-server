@@ -24,7 +24,6 @@ export async function initServer() {
       const requestId = Date.now();
       if(handleIncomingRequests(requestId)){
           next(); 
-          
       }else{
           res.status(429).send("Too many requests");
       }
