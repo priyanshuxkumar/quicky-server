@@ -38,6 +38,7 @@ export interface createMessagePayload {
   senderId: string
   recipientId: string
   storyId? : string
+  shareMediaUrl? : string
 }
 
 interface Message {
@@ -145,7 +146,7 @@ const queries = {
       if (!id) return null;
   
       try {
-          let messages : Message[] = [];
+          let messages: any = [];
 
           if (chatId && recipientId) {
               messages = await prismaClient.message.findMany({
@@ -186,7 +187,7 @@ const queries = {
             messages = [];
           };
 
-          await redisClient.set(cacheKey , JSON.stringify(messages) , {'EX' : 60})
+          await redisClient.set(cacheKey , JSON.stringify(messages) , {'EX' : 5})
           return messages;
       } catch (error) {
           console.error('Error fetching messages:', error);
@@ -292,10 +293,9 @@ const queries = {
       const putObjectCommand = new PutObjectCommand(
         {
           Bucket: process.env.S3_BUCKET_NAME || "",
-          Key: `upload/chat/${ctx.user.id}/${imageName}-${Date.now()}`,
+          Key: `upload/chat/${ctx.user.id}/-${Date.now()}-${imageName}`,
         }
       );
-
       const signedUrl = await getSignedUrl(s3Client , putObjectCommand)
       return signedUrl;
       
@@ -313,10 +313,9 @@ const queries = {
         const putObjectCommand = new PutObjectCommand(
           {
             Bucket: process.env.S3_BUCKET_NAME || "",
-            Key: `upload/avatar/${ctx.user.id}/${imageName}-${Date.now()}`,
+            Key: `upload/avatar/${ctx.user.id}/-${Date.now()}-${imageName}`,
           }
         );
-
         const signedUrl = await getSignedUrl(s3Client, putObjectCommand)
         return signedUrl;
 
@@ -423,6 +422,43 @@ const queries = {
       const signedUrl = await getSignedUrl(s3Client, putObjectCommand)
       return signedUrl;
     },
+
+    getSignedUrlOfSharedMedia: async(parent: any, {shareMediaName, shareMediaType}: {shareMediaName: string, shareMediaType: string}, ctx: GraphqlContext) => {
+      if(!ctx.user && !ctx.user.id){
+        throw new Error("User not authenticated")
+      };
+
+      const allowesImageType = ['jpg , jpeg , png']
+
+      if(!allowesImageType) throw new Error("Invalid image type")
+
+      const putObjectCommand = new PutObjectCommand(
+        {
+          Bucket: process.env.S3_BUCKET_NAME || "",
+          Key: `upload/shared-media/${ctx.user.id}/-${Date.now()}-${shareMediaName}`,
+        }
+      );
+
+      const signedUrl = await getSignedUrl(s3Client, putObjectCommand)
+      return signedUrl;
+    },
+
+    fetchSharedMediaOfChat: async(parent: any, {chatId}: {chatId: string}, ctx: GraphqlContext) => {
+      if(!ctx.user && !ctx.user.id){
+        throw new Error("User not authenticated")
+      };
+
+      const media = await prismaClient.message.findMany({
+        where: {
+          chatId,
+          shareMediaUrl: {
+              not: null
+          }
+        }
+      });
+      
+      return media;
+    }
 };
 
 const mutations = {
@@ -558,13 +594,13 @@ const mutations = {
       throw new Error("Unauthorized! Please login to create a chat.");
     }
 
-    const { recipientId, content, chatId , storyId} = payload;
+    const { recipientId, content, chatId , storyId , shareMediaUrl} = payload;
 
     // Validate required fields
     if (!recipientId) {
       throw new Error("Missing reciever ID");
     }
-    if (!content) {
+    if (!content && !shareMediaUrl?.length) {
       throw new Error("Message content cannot be empty.");
     }
 
@@ -581,7 +617,8 @@ const mutations = {
             content: content,
             recipientId,
             senderId: ctx.user.id,
-            storyId
+            storyId,
+            shareMediaUrl
           },
         });
         return message;
@@ -632,7 +669,8 @@ const mutations = {
           content: content,
           recipientId,
           senderId: ctx.user.id,
-          storyId
+          storyId,
+          shareMediaUrl
         },
       });
 
@@ -645,7 +683,6 @@ const mutations = {
       return message;
     }
     }
-
   },
 
   // deleteMessages: async(parent:any , {chatId}: {chatId :string} , ctx: GraphqlContext) => {

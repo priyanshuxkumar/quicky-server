@@ -39,14 +39,15 @@ export const types = `#graphql
 
     input SendMessageInput {
         chatId:      String
-        content:     String!
+        content:     String
         recipientId: String!
         storyId:     String
+        shareMediaUrl: String
     }
 
     type Message {
         id:          ID!
-        content:     String!
+        content:     String
         senderId:    String!
         recipientId: String
         chatId:      String!
@@ -54,7 +55,8 @@ export const types = `#graphql
         createdAt:   String!
         isSeen:      Boolean!
         storyId:     String
-        story:       Story       
+        story:       Story
+        shareMediaUrl: String       
     }
 
     type ChatUser {

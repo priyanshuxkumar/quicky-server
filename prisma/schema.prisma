@@ -51,13 +51,14 @@ model ChatUser {
 
 model Message {
     id          String  @id @default(cuid())
-    content     String
+    content     String?
     senderId    String
     recipientId String
     isSeen      Boolean  @default(false)
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
     storyId     String?
+    shareMediaUrl    String?
 
     chatId      String
     chat        Chat @relation(fields: [chatId], references: [id])
