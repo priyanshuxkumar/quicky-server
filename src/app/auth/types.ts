@@ -30,4 +30,16 @@ export const types = `#graphql
         user:  User
         token: String!
     }
+
+    type Response {
+        success: Boolean!
+        message: String!
+    }
+
+    input UpdateUserProfileDetailsInput {
+        firstname: String
+        lastname: String
+        username: String
+        avatar: String
+    }
 `;
