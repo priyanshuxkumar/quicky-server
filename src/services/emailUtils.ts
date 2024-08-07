@@ -3,7 +3,7 @@ import transporter from "./nodemailerTransporter"
 export const sendOTPEmail = async(email:string , otp:string) => {
     try {
         await transporter.sendMail({
-            from: 'theboyykanpur@gmail.com',
+            from: process.env.EMAIL,
             to: email, 
             subject: 'Verify your email for Quicky', 
             text: `Your OTP for verification is: ${otp}`,
