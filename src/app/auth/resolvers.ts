@@ -3,6 +3,7 @@ import { prismaClient } from "../../clients/db";
 import { GraphqlContext } from "../../interfaces";
 import JWTService from "../../services/jwt";
 import { sendOTPEmail } from "../../services/emailUtils";
+import redisClient from "../../services/redisClient";
 
 
 export interface createUserPayload {
@@ -18,9 +19,6 @@ export interface loginUserPayload {
   identifier: string;
   password: string;
 }
-
-
-const otpStorage: { [key: string]: string } = {};
 
 const mutations = {
   registerUser: async (
@@ -58,7 +56,7 @@ const mutations = {
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      const newUser = await prismaClient.user.create({
+      await prismaClient.user.create({
         data: {
           firstname,
           lastname,
@@ -69,9 +67,11 @@ const mutations = {
         },
       });
 
-      return newUser;
+      return {
+        success: true,
+        message: "User registered successfully!",
+      };
     } catch (error: any) {
-      console.log("Error in registerUser:", error.message);
       if (error.message == "Email is already taken!") {
         return { errors: [{ message: "Email is already taken!" }] };
       }
@@ -83,7 +83,6 @@ const mutations = {
           errors: [{ message: "Password must be at least 8 characters long." }],
         };
       }
-      console.error("Error in registerUser:", error);
     }
   },
 
@@ -104,8 +103,8 @@ const mutations = {
 
       const OTP = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // Store the OTP temporarily
-      otpStorage[email] = OTP;
+      // Store the OTP in Redis
+      await redisClient.set(email, OTP, { EX: 300 });
 
       await sendOTPEmail(email, OTP);
       return {
@@ -113,7 +112,6 @@ const mutations = {
         message: "OTP sent successfully!",
       };
     } catch (error: any) {
-      console.error("Error in resendOTP:", error.message);
       throw new Error("Failed to resend OTP.");
     }
   },
@@ -126,7 +124,12 @@ const mutations = {
     if (!otp || !email) {
       throw new Error("This field can't be empty!");
     }
-    if (otpStorage[email] != otp) {
+
+    const cacheOTP = await redisClient.get(email);
+    
+    if(!cacheOTP) throw new Error("Otp has been expired! , Send again!");
+
+    if (cacheOTP != otp) {
       throw new Error("Invalid OTP!");
     }
     return {
@@ -164,9 +167,6 @@ const mutations = {
     const token = JWTService.generateTokenForUser(user);
     return { user, token };
   },
-
- 
-
   
 };
 

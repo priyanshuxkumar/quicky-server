@@ -1,6 +1,9 @@
 import { Server as SocketIOServer } from "socket.io";
+import { produceMessage } from "../kafka/producer";
+import { consumeMessages } from "../kafka/consumer";
 
 let io: SocketIOServer;
+
 
 export function initSocket(server: any) {
   io = new SocketIOServer(server, {
@@ -15,7 +18,7 @@ export function initSocket(server: any) {
     console.log("Connected to socket.io", socket.id);
 
     socket.on('setup' , (userId) => {
-      console.log("User is Connected:" ,userId);
+      console.log("User is Connected:" , userId);
     })
 
    //User join a Chat
@@ -25,8 +28,11 @@ export function initSocket(server: any) {
     });
   
     //Send Message one to one
-    socket.on("sendMessage", (message) => {
+    socket.on("sendMessage", async(message) => {
         io.emit("receivedMessage", message);
+        //Kafka produce message
+        await produceMessage(message)
+        console.log("Msg produced to kafka", message);
     });
 
     // User Typing Indicator functionality starts here

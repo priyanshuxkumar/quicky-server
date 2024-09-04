@@ -13,9 +13,10 @@ import cors from "cors";
 import { initSocket } from "../services/socket";
 
 //Rate Limiter---
-import {handleIncomingRequests} from "../middlewares/rateLimiter"
+import { handleIncomingRequests } from "../middlewares/rateLimiter";
 import { Story } from "./story";
 import { Auth } from "./auth";
+import { consumeMessages } from "../kafka/consumer";
 
 export async function initServer() {
   const app = express();
@@ -23,13 +24,13 @@ export async function initServer() {
   app.use(cors());
 
   //Using Rate Limiting Middleware
-  app.use((req, res , next) => {
-      const requestId = Date.now();
-      if(handleIncomingRequests(requestId)){
-          next(); 
-      }else{
-          res.status(429).send("Too many requests");
-      }
+  app.use((req, res, next) => {
+    const requestId = Date.now();
+    if (handleIncomingRequests(requestId)) {
+      next();
+    } else {
+      res.status(429).send("Too many requests");
+    }
   });
 
   const graphqlServer = new ApolloServer<GraphqlContext>({
@@ -85,6 +86,6 @@ export async function initServer() {
       },
     })
   );
-
+  consumeMessages();
   return httpServer;
 }
