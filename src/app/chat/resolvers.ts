@@ -209,7 +209,7 @@ const queries = {
       where: {
         chatId,
         shareMediaUrl: {
-          not: null,
+          not: '',
         },
       },
     });

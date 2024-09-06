@@ -94,6 +94,8 @@ const queries = {
       select: {
         id: true,
         username: true,
+        firstname: true,
+        lastname: true,
         avatar: true,
       },
     });
